@@ -1,0 +1,94 @@
+#!/bin/bash
+
+LOCKFILE=autopush.lock
+REPO=$1
+
+notify() {
+    zenity --notification --text="autopush: $REPO\n $1"
+}
+
+
+if [ -z $REPO ] ; then
+    notify "Missing path to git repository."
+    exit 1
+fi
+
+cd $REPO > /dev/null 2>&1
+
+if [ $? -gt 0 ]; then
+    notify "Could not change in directory."
+    exit 1
+fi
+
+if [ ! -f autopush.conf ] ; then
+    notify "Repo does not contain an autopush.conf file"
+    exit 1
+fi
+
+if [ ! -d .git ] ; then
+    notify "Directory ist not a git repository."
+    exit 1
+fi
+
+
+if [ -e $LOCKFILE ] ; then
+    notify "Repository is locked."
+    exit 1
+fi
+
+git ls-remote > /dev/null 2>&1
+
+if [ $? -gt 0 ] ; then
+    notify "Could not connect to remote."
+    exit 1
+fi
+
+touch $LOCKFILE
+
+if [ $? -gt 0 ] ; then
+    notify "Failed to create a lock file."
+    exit 1
+fi
+
+git pull >> $LOCKFILE 2>&1
+
+if [ $? -gt 0 ] ; then
+    notify "Failed to git-pull."
+    exit 1
+fi
+
+MODIFIED=$(git ls-files -m)
+UNTRACKED=$(git ls-files -o --exclude-standard --exclude=$LOCKFILE)
+
+if [ -z $MODIFIED ] && [ -z $UNTRACKED ] ; then
+    rm $LOCKFILE
+    exit 0
+fi
+
+git add . >> $LOCKFILE 2>&1
+
+if [ $? -gt 0 ] ; then
+    notify "Failed to git-add."
+    exit 1
+fi
+
+git commit -m "autopush: $(date)" >> $LOCKFILE 2>&1
+
+if [ $? -gt 0 ] ; then
+    notify "Failed to git-commit."
+    exit 1
+fi
+
+git push >> $LOCKFILE 2>&1
+
+if [ $? -gt 0 ] ; then
+    notify "Failed to git-push."
+    exit 1
+fi
+
+rm $LOCKFILE
+
+notify "Successfully pushed changes."
+
+exit 0
+
